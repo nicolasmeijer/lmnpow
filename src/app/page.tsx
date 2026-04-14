@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 
 interface BienImmobilier {
   montantAchat: string;
@@ -360,7 +360,14 @@ function LigneTotal({ label, valeur }: { label: string; valeur?: string | number
 }
 
 // ─── Form 2033-B : Compte de résultat ────────────────────────────────────────
-function Form2033B() {
+function Form2033B({ loyers, depenses, anneeFiscale, lignes, chargesFinCalc, onResultatChange }: {
+  loyers: LoyerPercu[];
+  depenses: Depense[];
+  anneeFiscale: number;
+  lignes: LigneAmortissement[];
+  chargesFinCalc: number;
+  onResultatChange: (v: number) => void;
+}) {
   const [d, setD] = useState({
     // Produits d'exploitation
     ventes_export: '', ventes_total: '',
@@ -387,12 +394,23 @@ function Form2033B() {
   type DKey = keyof typeof d;
   const upd = (k: DKey, v: string) => setD(p => ({ ...p, [k]: v }));
   const nv = (k: DKey) => parseFloat(d[k]) || 0;
-  const fmt = (v: number) => v === 0 ? '' : v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+  const fmt = (v: number) => v === 0 ? '' : v.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 
-  const totalI  = nv('ventes_total') + nv('biens_total') + nv('services_total') + nv('prod_stockee') + nv('prod_immob') + nv('subventions_expl') + nv('autres_produits');
-  const totalII = nv('achats_march') + nv('var_stock_march') + nv('achats_matieres') + nv('var_stock_mat') + nv('autres_ext') + nv('impots') + nv('remunerations') + nv('cotisations') + nv('dot_amort') + nv('dot_dep') + nv('autres_charges');
+  // Valeurs calculées automatiquement
+  const servicesCalc = loyers
+    .filter(l => parseInt(l.exercice) === anneeFiscale)
+    .reduce((s, l) => s + parseFloat(l.loyerMensuel) * parseInt(l.nombreMois), 0);
+  const impotsCalc = depenses
+    .filter(dep => parseInt(dep.annee) === anneeFiscale && dep.type === 'Impôts')
+    .reduce((s, dep) => s + (parseFloat(dep.montant) || 0), 0);
+  const ligneAnnee   = lignes.find(l => l.annee === anneeFiscale);
+  const dotAmortCalc = ligneAnnee ? ligneAnnee.amortissementPeriode : 0;
+
+  const totalI  = nv('ventes_total') + nv('biens_total') + servicesCalc + nv('prod_stockee') + nv('prod_immob') + nv('subventions_expl') + nv('autres_produits');
+  const totalII = nv('achats_march') + nv('var_stock_march') + nv('achats_matieres') + nv('var_stock_mat') + nv('autres_ext') + impotsCalc + nv('remunerations') + nv('cotisations') + dotAmortCalc + nv('dot_dep') + nv('autres_charges');
   const resultat = totalI - totalII;
-  const benefice = (totalI + nv('prod_fin') + nv('prod_excep')) - (totalII + nv('charges_fin') + nv('charges_excep') + nv('impots_benef'));
+  const benefice = (totalI + nv('prod_fin') + nv('prod_excep')) - (totalII + chargesFinCalc + nv('charges_excep') + nv('impots_benef'));
+  useEffect(() => { onResultatChange(benefice); }, [benefice]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const inp     = "border border-[#999] bg-white text-right text-[12px] px-1 py-0.5 text-slate-800 tabular-nums focus:outline-none focus:border-indigo-400 w-full";
   const totCell = "border border-[#bbb] bg-[#e0ddc8] text-right text-[12px] px-1 py-0.5 text-slate-800 font-semibold tabular-nums w-full";
@@ -408,6 +426,13 @@ function Form2033B() {
     );
   }
   function emptyCell() { return <td className={`px-1 py-0.5 ${W}`} />; }
+  function cmpdCell(v: number) {
+    return (
+      <td className={`px-1 py-0.5 ${W}`}>
+        <div className="border border-[#bbb] bg-[#e8e8e8] text-right text-[12px] px-1 py-0.5 text-slate-700 tabular-nums w-full">{fmt(v)}</div>
+      </td>
+    );
+  }
 
   return (
     <div className="p-4 space-y-4">
@@ -441,7 +466,7 @@ function Form2033B() {
             <tr className={rowCls}>
               <td className="px-3 py-1 text-[12px] text-slate-700">Services <span className="text-[11px] text-slate-500 italic ml-1">– dont export et livraisons intracommunautaires</span></td>
               {inpCell('services_export')}
-              {inpCell('services_total')}
+              {cmpdCell(servicesCalc)}
             </tr>
             {/* Simples */}
             <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Production stockée <i className="text-[11px] text-slate-500">(variation du stock en produits intermédiaires, produits finis et en cours de production)</i></td>{inpCell('prod_stockee')}</tr>
@@ -489,7 +514,7 @@ function Form2033B() {
             <tr className={rowCls}>
               <td rowSpan={2} className="px-3 py-1 text-[12px] text-slate-700 align-middle border-r border-[#e0d8c0]">Impôts, taxes et versements assimilés</td>
               <td colSpan={2} className="px-1 py-0.5" />
-              {inpCell('impots')}
+              {cmpdCell(impotsCalc)}
             </tr>
             <tr className={rowCls}>
               <td className="px-3 py-0.5 text-[11px] text-slate-500 italic text-right">dont TP/CFE, CVAE</td>
@@ -504,7 +529,7 @@ function Form2033B() {
               {inpCell('cotisations_perso')}{emptyCell()}
             </tr>
             {/* Dotations amort */}
-            <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Dotations aux amortissements</td>{inpCell('dot_amort')}</tr>
+            <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Dotations aux amortissements</td>{cmpdCell(dotAmortCalc)}</tr>
             <tr className={rowCls}>
               <td className="px-1 py-0.5" />
               <td className="px-3 py-0.5 text-[11px] text-slate-500 italic text-right">dont amortissement du fonds de commerce</td>
@@ -530,14 +555,13 @@ function Form2033B() {
               <td colSpan={3} className="px-3 py-1 text-[12px] font-semibold text-slate-700 text-right pr-4">Total des charges d'exploitation (II)</td>
               <td className={`px-1 py-0.5 ${W}`}><div className={totCell}>{fmt(totalII)}</div></td>
             </tr>
+            {/* 1 – Résultat d'exploitation */}
+            <tr className="border-b border-[#c8b87a] bg-[#f5edc8]">
+              <td colSpan={3} className="px-3 py-1 text-[12px] font-bold text-slate-700 text-right pr-4">1 – RÉSULTAT D'EXPLOITATION (I – II)</td>
+              <td className={`px-1 py-0.5 ${W}`}><div className={totCell}>{resultat === 0 ? '0' : fmt(resultat)}</div></td>
+            </tr>
           </tbody>
         </table>
-      </div>
-
-      {/* ── 1 – Résultat d'exploitation ── */}
-      <div className="border border-[#c8b87a] bg-[#f5edc8] flex items-center gap-4 px-4 py-2">
-        <span className="flex-1 text-[12px] font-bold text-slate-700">1 – RÉSULTAT D'EXPLOITATION (I – II)</span>
-        <div className={`${totCell} ${W} flex-shrink-0`}>{fmt(resultat)}</div>
       </div>
 
       {/* ── Produits et charges divers ── */}
@@ -552,7 +576,7 @@ function Form2033B() {
           <tbody>
             <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Produits financiers (III)</td>{inpCell('prod_fin')}</tr>
             <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Produits exceptionnels (IV)</td>{inpCell('prod_excep')}</tr>
-            <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Charges financières (V)</td>{inpCell('charges_fin')}</tr>
+            <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Charges financières (V)</td>{cmpdCell(chargesFinCalc)}</tr>
             {/* Charges exceptionnelles */}
             <tr className={rowCls}>
               <td rowSpan={3} className="px-3 py-1 text-[12px] text-slate-700 align-middle border-r border-[#e0d8c0]">Charges exceptionnelles (VI)</td>
@@ -568,14 +592,13 @@ function Form2033B() {
               {inpCell('amort_constructions')}{emptyCell()}
             </tr>
             <tr className={rowCls}><td colSpan={3} className="px-3 py-1 text-[12px] text-slate-700">Impôts sur les bénéfices (VII)</td>{inpCell('impots_benef')}</tr>
+            {/* 2 – Bénéfice ou perte */}
+            <tr className="border-b border-[#c8b87a] bg-[#f5edc8]">
+              <td colSpan={3} className="px-3 py-1 text-[12px] font-bold text-slate-700 text-right pr-4">2 – BÉNÉFICE OU PERTE : Produits (I + III + IV) – Charges (II + V + VI + VII)</td>
+              <td className={`px-1 py-0.5 ${W}`}><div className={totCell}>{benefice === 0 ? '0' : fmt(benefice)}</div></td>
+            </tr>
           </tbody>
         </table>
-      </div>
-
-      {/* ── 2 – Bénéfice ou perte ── */}
-      <div className="border border-[#c8b87a] bg-[#f5edc8] flex items-center gap-4 px-4 py-2">
-        <span className="flex-1 text-[12px] font-bold text-slate-700">2 – BÉNÉFICE OU PERTE : Produits (I + III + IV) – Charges (II + V + VI + VII)</span>
-        <div className={`${totCell} ${W} flex-shrink-0`}>{fmt(benefice)}</div>
       </div>
     </div>
   );
@@ -640,7 +663,7 @@ function Form2033C({ montantAchat, premiereAnnee, anneeFiscale, lignes }: {
   }
 
   function fmtC(n: number) {
-    return n === 0 ? '' : n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+    return n === 0 ? '' : n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
   }
 
   const allKeys = Object.keys(immo) as ImmoKey[];
@@ -828,7 +851,14 @@ function Form2033C({ montantAchat, premiereAnnee, anneeFiscale, lignes }: {
 }
 
 // ─── Form 2033-A : Bilan simplifié ───────────────────────────────────────────
-function Form2033A() {
+function Form2033A({ montantAchat, lignes, anneeFiscale, capitalRestantFinN, capitalRestantFinNplus1, resultatExploitation }: {
+  montantAchat: string;
+  lignes: LigneAmortissement[];
+  anneeFiscale: number;
+  capitalRestantFinN: number;
+  capitalRestantFinNplus1: number;
+  resultatExploitation: number;
+}) {
   const vA: ActifLigne = { brut: '', amort: '' };
   const [actif, setActif] = useState({
     incorp:        { ...vA }, corp:          { ...vA },
@@ -842,7 +872,6 @@ function Form2033A() {
     capital: '', primes: '', ecartsReeval: '', reserves: '',
     reportANouveau: '', resultat: '', subventions: '', provsRegl: '',
     totalII: '',
-    empruntsOblig: '', empruntsEtab: '', empruntsDiv: '',
     avancesRecues: '', fournisseurs: '', fiscSoc: '',
     dettesImmo: '', autresDettes: '', prodsConst: '',
   });
@@ -861,46 +890,56 @@ function Form2033A() {
   function setR(k: RKey, v: string) { setRenvois(r => ({ ...r, [k]: v })); }
 
   function netA(l: ActifLigne) { return (parseFloat(l.brut) || 0) - (parseFloat(l.amort) || 0); }
-  function fmtA(n: number) { return n === 0 ? '' : n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 2 }); }
+  function fmtA(n: number) { return n === 0 ? '' : n.toLocaleString('fr-FR', { minimumFractionDigits: 0, maximumFractionDigits: 0 }); }
+
+  // Valeurs calculées pour Immobilisations corporelles
+  const corpBrut  = parseFloat(montantAchat) || 0;
+  const ligneN    = lignes.find(l => l.annee === anneeFiscale);
+  const corpAmort = ligneN ? ligneN.finPeriode : 0;
 
   const immoKeys: AKey[] = ['incorp', 'corp', 'fin', 'charges'];
   const circKeys: AKey[] = ['stocks', 'avancesV', 'creances', 'autresCreances', 'vmp', 'dispos', 'chargesAv', 'ecartsConvA'];
 
-  function sumBrut(keys: AKey[])  { return keys.reduce((s, k) => s + (parseFloat(actif[k].brut)  || 0), 0); }
-  function sumAmort(keys: AKey[]) { return keys.reduce((s, k) => s + (parseFloat(actif[k].amort) || 0), 0); }
-  function sumNet(keys: AKey[])   { return keys.reduce((s, k) => s + netA(actif[k]), 0); }
+  function sumBrut(keys: AKey[])  { return keys.reduce((s, k) => s + (k === 'corp' ? corpBrut  : (parseFloat(actif[k].brut)  || 0)), 0); }
+  function sumAmort(keys: AKey[]) { return keys.reduce((s, k) => s + (k === 'corp' ? corpAmort : (parseFloat(actif[k].amort) || 0)), 0); }
+  function sumNet(keys: AKey[])   { return keys.reduce((s, k) => s + (k === 'corp' ? corpBrut - corpAmort : netA(actif[k])), 0); }
 
   const brutI  = sumBrut(immoKeys),  amortI  = sumAmort(immoKeys),  netI  = sumNet(immoKeys);
   const brutII = sumBrut(circKeys),  amortII = sumAmort(circKeys),  netII = sumNet(circKeys);
 
   const passifIKeys:   PKey[] = ['capital','primes','ecartsReeval','reserves','reportANouveau','resultat','subventions','provsRegl'];
-  const passifIIIKeys: PKey[] = ['empruntsOblig','empruntsEtab','empruntsDiv','avancesRecues','fournisseurs','fiscSoc','dettesImmo','autresDettes','prodsConst'];
+  const passifIIIKeys: PKey[] = ['avancesRecues','fournisseurs','fiscSoc','dettesImmo','autresDettes','prodsConst'];
   function sumP(keys: PKey[]) { return keys.reduce((s, k) => s + (parseFloat(passif[k]) || 0), 0); }
-  const totalI_p   = sumP(passifIKeys);
+  const totalI_p   = (netI + netII) - capitalRestantFinN;
   const totalII_p  = parseFloat(passif.totalII) || 0;
-  const totalIII_p = sumP(passifIIIKeys);
+  const totalIII_p = capitalRestantFinN + sumP(passifIIIKeys);
 
   const inp     = "border border-[#999] bg-white text-right text-[12px] px-1 py-0.5 text-slate-800 tabular-nums focus:outline-none focus:border-indigo-400 w-full";
   const cmpd    = "border border-[#bbb] bg-[#e8e8e8] text-right text-[12px] px-1 py-0.5 text-slate-700 tabular-nums w-full";
   const totCell = "border border-[#bbb] bg-[#e0ddc8] text-right text-[12px] px-1 py-0.5 text-slate-800 font-semibold tabular-nums w-full";
 
-  type ActifRowConf = { key: AKey; label: string; noAmort?: boolean };
+  type ActifRowConf = { key: AKey; label: string; noAmort?: boolean; cBrut?: number; cAmort?: number };
 
-  function renderActifRow({ key: k, label, noAmort }: ActifRowConf) {
+  function renderActifRow({ key: k, label, noAmort, cBrut, cAmort }: ActifRowConf) {
     const l = actif[k];
+    const brutVal  = cBrut  !== undefined ? cBrut  : (parseFloat(l.brut)  || 0);
+    const amortVal = cAmort !== undefined ? cAmort : (parseFloat(l.amort) || 0);
     return (
       <tr key={k} className="border-b border-[#e0d8c0] bg-[#fdf6e3]">
         <td className="px-3 py-1 text-[12px] text-slate-700">{label}</td>
         <td className="px-1 py-0.5 w-32">
-          <input type="number" value={l.brut} onChange={e => setA(k, 'brut', e.target.value)} className={inp} placeholder="0" />
+          {cBrut !== undefined
+            ? <div className={cmpd}>{fmtA(cBrut)}</div>
+            : <input type="number" value={l.brut} onChange={e => setA(k, 'brut', e.target.value)} className={inp} placeholder="0" />}
         </td>
         <td className="px-1 py-0.5 w-32">
-          {noAmort
-            ? <div className={cmpd} />
-            : <input type="number" value={l.amort} onChange={e => setA(k, 'amort', e.target.value)} className={inp} placeholder="0" />
-          }
+          {cAmort !== undefined
+            ? <div className={cmpd}>{fmtA(cAmort)}</div>
+            : noAmort
+              ? <div className={cmpd} />
+              : <input type="number" value={l.amort} onChange={e => setA(k, 'amort', e.target.value)} className={inp} placeholder="0" />}
         </td>
-        <td className="px-1 py-0.5 w-32"><div className={cmpd}>{fmtA(netA(l))}</div></td>
+        <td className="px-1 py-0.5 w-32"><div className={cmpd}>{fmtA(brutVal - amortVal)}</div></td>
       </tr>
     );
   }
@@ -926,7 +965,7 @@ function Form2033A() {
 
   const immoRows: ActifRowConf[] = [
     { key: 'incorp',   label: 'Immobilisations incorporelles' },
-    { key: 'corp',     label: 'Immobilisations corporelles' },
+    { key: 'corp',     label: 'Immobilisations corporelles', cBrut: corpBrut, cAmort: corpAmort },
     { key: 'fin',      label: 'Immobilisations financières' },
     { key: 'charges',  label: 'Charges à répartir sur plusieurs exercices' },
   ];
@@ -1004,12 +1043,18 @@ function Form2033A() {
             </thead>
             <tbody>
               {grpHdr('Capitaux propres', 2)}
-              {renderPassifRow('capital',         'Capital social ou individuel')}
+              <tr className="border-b border-[#e0d8c0] bg-[#fdf6e3]">
+                <td className="px-3 py-1 text-[12px] text-slate-700">Capital social ou individuel</td>
+                <td className="px-1 py-0.5 w-40"><div className={cmpd}>{fmtA(totalI_p - resultatExploitation)}</div></td>
+              </tr>
               {renderPassifRow('primes',          "Primes d'émission, de fusion, d'apport")}
               {renderPassifRow('ecartsReeval',    'Écarts de réévaluation')}
               {renderPassifRow('reserves',        'Réserves')}
               {renderPassifRow('reportANouveau',  'Report à nouveau')}
-              {renderPassifRow('resultat',        "Résultat de l'exercice (bénéfice ou perte)")}
+              <tr className="border-b border-[#e0d8c0] bg-[#fdf6e3]">
+                <td className="px-3 py-1 text-[12px] text-slate-700">{"Résultat de l'exercice (bénéfice ou perte)"}</td>
+                <td className="px-1 py-0.5 w-40"><div className={cmpd}>{fmtA(resultatExploitation)}</div></td>
+              </tr>
               {renderPassifRow('subventions',     "Subventions d'investissement")}
               {renderPassifRow('provsRegl',       'Provisions réglementées')}
               {renderPassifTotal('TOTAL I – Capitaux propres', totalI_p)}
@@ -1017,9 +1062,10 @@ function Form2033A() {
               {renderPassifRow('totalII',         'Provisions pour risques et charges')}
               {renderPassifTotal('TOTAL II', totalII_p)}
               {grpHdr('Dettes', 2)}
-              {renderPassifRow('empruntsOblig',   'Emprunts obligataires convertibles')}
-              {renderPassifRow('empruntsEtab',    'Emprunts et dettes auprès des établissements de crédit')}
-              {renderPassifRow('empruntsDiv',     'Emprunts et dettes financières diverses')}
+              <tr className="border-b border-[#e0d8c0] bg-[#fdf6e3]">
+                <td className="px-3 py-1 text-[12px] text-slate-700">Emprunts et dettes assimilées</td>
+                <td className="px-1 py-0.5 w-40"><div className={cmpd}>{fmtA(capitalRestantFinN)}</div></td>
+              </tr>
               {renderPassifRow('avancesRecues',   'Avances et acomptes reçus sur commandes en cours')}
               {renderPassifRow('fournisseurs',    'Dettes fournisseurs et comptes rattachés')}
               {renderPassifRow('fiscSoc',         'Dettes fiscales et sociales')}
@@ -1036,26 +1082,29 @@ function Form2033A() {
       {/* ── RENVOIS ── */}
       <div>
         <TitreSection label="RENVOIS" />
-        <div className="mt-2 grid grid-cols-2 gap-0 border border-[#c8b87a] rounded">
-          {([
-            ['amorts',     "Amortissements pratiqués pendant l'exercice"],
-            ['provisions', "Provisions constituées en franchise d'impôt"],
-            ['pvCourt',    'Plus-values à court terme réalisées'],
-            ['pvLong',     'Plus-values à long terme réalisées'],
-            ['mvCourt',    'Moins-values à court terme réalisées'],
-            ['mvLong',     'Moins-values à long terme réalisées'],
-          ] as [RKey, string][]).map(([k, label]) => (
-            <div key={k} className="flex items-center border-b border-r border-[#e0d8c0] bg-[#fdf6e3] px-3 py-1 gap-2 min-h-[28px]">
-              <span className="flex-1 text-[12px] text-slate-700">{label}</span>
-              <input
-                type="number"
-                value={renvois[k]}
-                onChange={e => setR(k, e.target.value)}
-                className={`${inp} w-28 flex-shrink-0`}
-                placeholder="0"
-              />
-            </div>
-          ))}
+        <div className="mt-2 overflow-x-auto">
+          <table className="w-full border-collapse text-sm border border-[#c8b87a]">
+            <tbody>
+              {([
+                [['amorts',  "Amortissements pratiqués pendant l'exercice"], ['provisions', "(4) Dont dettes à plus d'un an"]],
+                [['pvCourt', 'Plus-values à court terme réalisées'],          ['pvLong',     '(5) Coût de revient des immobilisations acquises']],
+                [['mvCourt', 'Moins-values à court terme réalisées'],         ['mvLong',     'Moins-values à long terme réalisées']],
+              ] as [[RKey, string], [RKey, string]][]).map(([left, right]) => (
+                <tr key={left[0]} className="border-b border-[#e0d8c0] bg-[#fdf6e3]">
+                  <td className="px-3 py-1 text-[12px] text-slate-700 w-[38%]">{left[1]}</td>
+                  <td className="px-1 py-0.5 w-32">
+                    <input type="number" value={renvois[left[0]]} onChange={e => setR(left[0], e.target.value)} className={`${inp}`} placeholder="0" />
+                  </td>
+                  <td className="px-3 py-1 text-[12px] text-slate-700 w-[38%] border-l border-[#e0d8c0]">{right[1]}</td>
+                  <td className="px-1 py-0.5 w-32">
+                    {right[0] === 'provisions'
+                      ? <div className={cmpd}>{fmtA(capitalRestantFinNplus1)}</div>
+                      : <input type="number" value={renvois[right[0]]} onChange={e => setR(right[0], e.target.value)} className={`${inp}`} placeholder="0" />}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1216,6 +1265,30 @@ export default function LMNPDeclaration() {
 
   const [ongletFiscal, setOngletFiscal] = useState<'2033-A' | '2033-B' | '2033-C'>('2033-B');
   const [anneeFiscale, setAnneeFiscale] = useState<number>(new Date().getFullYear() - 1);
+  const [resultat2033B, setResultat2033B] = useState<number>(0);
+
+  // Capital restant dû fin d'exercice N = somme du capital restant après la dernière mensualité de l'année N de chaque prêt
+  const capitalRestantFinN = prets.reduce((total, p) => {
+    const lpret = lignesPourPret(p);
+    const lignesAvantFinN = lpret.filter(l => parseInt(l.date.split('-')[0]) <= anneeFiscale);
+    if (lignesAvantFinN.length === 0) return total; // prêt pas encore démarré
+    return total + lignesAvantFinN[lignesAvantFinN.length - 1].capitalRestant;
+  }, 0);
+
+  // Capital restant dû au 31/12 de l'année N+1 (dettes à plus d'un an)
+  const capitalRestantFinNplus1 = prets.reduce((total, p) => {
+    const lpret = lignesPourPret(p);
+    const lignesAvantFinNplus1 = lpret.filter(l => parseInt(l.date.split('-')[0]) <= anneeFiscale + 1);
+    if (lignesAvantFinNplus1.length === 0) return total;
+    return total + lignesAvantFinNplus1[lignesAvantFinNplus1.length - 1].capitalRestant;
+  }, 0);
+
+  // Total des intérêts payés sur tous les emprunts pour l'année fiscale sélectionnée
+  const chargesFinCalc = prets.reduce((total, pret) => {
+    return total + lignesPourPret(pret)
+      .filter(l => new Date(l.date).getFullYear() === anneeFiscale)
+      .reduce((s, l) => s + l.interets, 0);
+  }, 0);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setBien({ ...bien, [e.target.name]: e.target.value });
@@ -1567,7 +1640,7 @@ export default function LMNPDeclaration() {
           {/* Formulaire d'ajout */}
           <form onSubmit={ajouterDepense} className="px-8 py-5 border-b border-slate-100 bg-slate-50/50">
             <datalist id="types-depenses">
-              <option value="Taxe foncière" />
+              <option value="Impôts" />
               <option value="Travaux" />
               <option value="Autres" />
             </datalist>
@@ -1965,7 +2038,14 @@ export default function LMNPDeclaration() {
               titre="Bilan simplifié de l'exercice"
               numero="N° 2033-A"
             />
-            <Form2033A />
+            <Form2033A
+              montantAchat={bien.montantAchat}
+              lignes={lignes}
+              anneeFiscale={anneeFiscale}
+              capitalRestantFinN={capitalRestantFinN}
+              capitalRestantFinNplus1={capitalRestantFinNplus1}
+              resultatExploitation={resultat2033B}
+            />
           </div>
 
           {/* ─── 2033-B ─── */}
@@ -1974,7 +2054,14 @@ export default function LMNPDeclaration() {
               titre="Compte de résultat simplifié de l'exercice"
               numero="N° 2033-B"
             />
-            <Form2033B />
+            <Form2033B
+              loyers={loyers}
+              depenses={depenses}
+              anneeFiscale={anneeFiscale}
+              lignes={lignes}
+              chargesFinCalc={chargesFinCalc}
+              onResultatChange={setResultat2033B}
+            />
           </div>
 
           {/* ─── 2033-C ─── */}
