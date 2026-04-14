@@ -1993,6 +1993,19 @@ export default function LMNPDeclaration() {
           <div className="flex-1 border-t-2 border-slate-300" />
         </div>
 
+        {/* ── Encart soutien ── */}
+        <div className="flex items-center justify-center">
+          <a
+            href="https://buymeacoffee.com/lmnpow"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-2 rounded-xl border border-yellow-300 bg-yellow-50 px-4 py-2 text-sm text-yellow-800 shadow-sm hover:bg-yellow-100 transition"
+          >
+            <span>☕</span>
+            <span>Cet outil vous aide ? Offrez-moi un café !</span>
+          </a>
+        </div>
+
         {/* ── Sélecteur d'année fiscale ── */}
         <div className="flex items-center justify-center gap-3">
           <label className="text-xs font-medium text-slate-500">Année fiscale de la déclaration</label>
