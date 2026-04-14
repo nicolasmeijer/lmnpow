@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npx create-next-app@latest . --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npx create-next-app@latest lmnpow --typescript --tailwind --eslint --app --src-dir --import-alias \"@/*\" --yes)",
+      "Bash(npx next:*)",
+      "Bash(npx tsc:*)",
+      "mcp__Claude_Preview__preview_start"
+    ]
+  }
+}
